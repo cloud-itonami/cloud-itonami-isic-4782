@@ -1,0 +1,242 @@
+# cloud-itonami-isic-4782
+
+Open Business Blueprint for **ISIC Rev.5 4782**: retail sale via stalls
+and markets of textiles, clothing and footwear -- market-stall/
+street-market vendors selling finished textiles, garments and footwear
+from a temporary or itinerant pitch, distinct from ISIC 4771 (retail
+sale of clothing, footwear and leather articles in *specialized
+stores*), which is a fixed storefront format.
+
+This repository publishes a market-stall textile/clothing/footwear
+vending operations-COORDINATION actor -- inventory/sale data logging,
+stall placement/staffing scheduling, textile/clothing/footwear
+supply-order coordination with registered vendors, and quality-concern
+flagging -- as an OSS business that any qualified operator can fork,
+deploy, run, improve and sell, so an independent market-stall vendor
+never surrenders its operations data to a closed back-office SaaS.
+
+Built on this workspace's
+[`langgraph`](https://github.com/kotoba-lang/langgraph)
+StateGraph runtime (portable `.cljc`, supervised superstep loop,
+interrupts, in-mem/Datomic checkpoints) -- the same actor pattern as
+every prior actor in this fleet -- here it is **StallMarketAdvisor ⊣
+StallMarketGovernor**. This blueprint's own
+`:itonami.blueprint/governor` keyword, `:stall-market-governor`, is a
+distinct, independent build (no naming-collision precedent question --
+distinct from sibling 47xx actors' own governor keywords, e.g. ISIC
+4771's `:apparel-retail-governor` and ISIC 4751's
+`:textile-retail-governor`).
+
+> **Why an actor layer at all?** An LLM is great at drafting a sales-
+> record summary, a stall-scheduling proposal, or a supply-order request
+> -- but it has no license to actually issue a refund, void a sale,
+> chargeback a vendor to resolve a quality dispute, or declare a
+> suspected item counterfeit/genuine to resolve an authenticity claim, no
+> way to independently confirm a stall or a supply-order vendor is
+> actually a registered/verified counterparty, and no notion of when a
+> "flag this concern" op quietly turns into a claim to have already
+> resolved it. Letting it act directly invites an unregistered stall's
+> data entering the ledger, an unverified vendor receiving a textile/
+> clothing/footwear order, or -- worst of all -- a fabricated claim to
+> have already refunded a customer or declared a disputed item
+> counterfeit/genuine, exposing the market-stall operator to real
+> liability. This project seals the StallMarketAdvisor into a single
+> node and wraps it with an independent **StallMarketGovernor**, a
+> human **approval workflow**, and an immutable **audit ledger**.
+
+## Scope: coordination only, not dispute/authenticity resolution
+
+This actor is **operations coordination only**. It never performs or
+authorizes:
+
+- setting or overriding a unit price
+- directly finalizing a quality-dispute resolution (issuing a refund or
+  replacement, voiding a sale, charging back a vendor, revoking or
+  terminating a vendor's registration/contract, or otherwise declaring a
+  quality dispute resolved)
+- directly finalizing a counterfeit-authenticity determination (declaring
+  an item counterfeit, certifying an item as genuine, or otherwise
+  resolving an authenticity claim)
+- quality-dispute-resolution or counterfeit-authenticity-resolution
+  authority (accepting/denying liability on the stall operator's behalf,
+  instructing a vendor's account be closed)
+
+The governor's `scope-exclusion-violations` check re-scans every
+proposal for this failure mode independently of the advisor's own
+framing, and treats it as a HARD, permanent block regardless of
+confidence or how clean everything else is. Flagging a quality/
+authenticity/permit concern for a human to triage is exactly this
+actor's job -- `:flag-quality-concern` is never excluded by this check,
+only FINALIZING/resolving/determining/actuating on that concern is.
+
+### Actuation
+
+**Every proposal this actor generates is `:effect :propose`, never a
+direct actuation.** Two independent layers enforce this
+(`stallops.governor`'s `effect-not-propose-violations` HARD check and
+`stallops.phase`'s phase table, which never puts
+`:flag-quality-concern` in any phase's `:auto` set). A human market-stall
+coordinator is always the one who actually acts on a flagged concern or
+confirms a high-cost supply order.
+
+## The core contract
+
+```
+stall/market-permit registration + operations-coordination request
+        |
+        v
+   ┌───────────────────────┐   proposal      ┌────────────────────────────┐
+   │ StallMarket-            │ ─────────────▶ │ StallMarketGovernor         │  (independent system)
+   │ Advisor (sealed)       │  + citations    │ stall-unverified ·          │
+   └───────────────────────┘                 │ vendor-unverified ·         │
+          │                 commit ◀┼ effect-not-propose ·               │
+          │                         │ scope-excluded (quality-dispute-    │
+    record + ledger        escalate ┼ resolution / counterfeit-           │
+          │              (ALWAYS for│ authenticity-determination          │
+          │       :flag-quality-    │ finalization) ·                    │
+          │       concern/high-cost │ op-not-allowed                      │
+          │       supply-order)     └────────────────────────────┘
+          ▼
+      human approval
+```
+
+**The StallMarketAdvisor never commits a proposal the
+StallMarketGovernor would reject, and a quality-concern flag or a
+high-cost supply order never commits without a human sign-off.** Hard
+violations (an unregistered/unverified stall; an unregistered/unverified
+supply-order vendor; a non-`:propose` effect; content touching
+quality-dispute-resolution or counterfeit-authenticity-determination
+finalization; an op outside the closed allowlist) force **hold** and
+*cannot* be approved past.
+
+## Robotics premise
+
+All cloud-itonami verticals are designed on the premise that a **robot
+may perform physical domain work** (here: textile/garment/footwear
+shelfing at the stall, restocking, point-of-sale handling) under
+human/robot floor operations gated by market policy. This actor itself
+does not dispatch robot/hardware actions -- it is strictly the
+operations-coordination layer (sales-record logging, stall-operation
+scheduling, supply-order coordination, quality-concern flagging) any
+physical-dispatch layer could eventually feed proposals into, always
+gated the same way by the independent StallMarketGovernor.
+
+## Features
+
+- **Closed proposal-op allowlist**: `log-sales-record`,
+  `schedule-stall-operation`, `coordinate-supply-order`,
+  `flag-quality-concern` (all `:effect :propose`).
+- **Four HARD governor checks** (permanent, un-overridable):
+  1. **Stall unverified** -- the target market stall/pitch's
+     registration must exist AND be independently registered/verified
+     (a stall/market permit on file, independently confirmed) in the
+     store.
+  2. **Vendor unverified** -- for `:coordinate-supply-order` only, the
+     named vendor (textile/clothing/footwear manufacturer/wholesaler/
+     distributor) must exist AND be independently registered/
+     verified -- a supply-chain counterparty-verification gate shared
+     with sibling 47xx retail actors.
+  3. **Effect is :propose** -- any other `:effect` value is rejected.
+  4. **Scope exclusion** -- directly finalizing a quality-dispute
+     resolution (refund/replacement issuance, sale voiding, vendor
+     chargeback, vendor registration/contract revocation) OR a
+     counterfeit-authenticity determination (declaring an item
+     counterfeit, certifying an item as genuine), and an op outside the
+     closed allowlist, are all permanently blocked.
+- **Two ESCALATE (SOFT) gates**, either forces human sign-off:
+  - `:flag-quality-concern` -- ALWAYS escalates, regardless of confidence
+    or phase. A "flag a concern" op (suspected-counterfeit item,
+    defective-goods item, or a stall/market-permit concern such as an
+    expired or suspicious permit) is never auto-commit eligible and
+    never finalizes a quality-dispute or authenticity decision itself --
+    it only surfaces the concern for a human.
+  - `:coordinate-supply-order` above a cost threshold -- a large-value
+    procurement proposal always needs a human sign-off.
+  - (LLM confidence below the floor also escalates, as with every
+    sibling actor.)
+- **Staged rollout** (Phase 0→3):
+  - Phase 0: read-only
+  - Phase 1: sales-record logging only (approval-gated)
+  - Phase 2: + stall-operation scheduling, supply-order proposals
+    (approval-gated)
+  - Phase 3: auto-commits clean, high-confidence, low-cost proposals
+    (quality concerns and high-cost supply orders always escalate)
+- **Append-only audit ledger** -- every decision is an immutable log
+  entry.
+- **langgraph-clj StateGraph** -- one request = one supervised run;
+  human-in-the-loop via `interrupt-before`.
+
+### Development
+
+```bash
+# Install dependencies (if inside the superproject, use :dev alias for local overrides)
+clojure -M:dev -P
+
+# Run tests
+clojure -M:test
+
+# Run linter
+clojure -M:lint
+
+# Run demo
+clojure -M:run
+```
+
+### Test suite
+
+- `test/stallops/governor_test.clj` -- unit tests of governor hard
+  checks, scope exclusion, and the self-trip regression test
+- `test/stallops/advisor_test.clj` -- advisor proposal shape and
+  consistency
+- `test/stallops/phase_test.clj` -- rollout phase logic
+- `test/stallops/governor_contract_test.clj` -- full graph
+  integration, audit trail
+- `test/stallops/store_contract_test.clj` -- Store protocol and
+  MemStore implementation
+
+### Modules
+
+- `stallops.store` -- SSoT (MemStore, String-keyed stall/vendor
+  directories, append-only ledger)
+- `stallops.advisor` -- contained intelligence node (mock +
+  real-LLM seam)
+- `stallops.governor` -- independent compliance layer
+- `stallops.phase` -- staged rollout (0→3)
+- `stallops.operation` -- langgraph-clj StateGraph
+- `stallops.sim` -- demo driver
+
+## Capability layer
+
+This blueprint resolves its technology stack via
+[`kotoba-lang/industry`](https://github.com/kotoba-lang/industry) (ISIC
+`4782`).
+
+## Business-process coverage (honest)
+
+| Covered | Not covered (out of scope for this R0) |
+|---|---|
+| Inventory/sale data logging (`:log-sales-record`) | Real POS/inventory-system integration |
+| Stall placement/staffing scheduling coordination (`:schedule-stall-operation`) | Direct staff time-clock/payroll integration, market-authority pitch-allocation system integration |
+| Textile/clothing/footwear supply-order coordination with a registered, verified vendor, HARD-gated on vendor verification and a double-actuation-free single-proposal shape (`:coordinate-supply-order`) | Real supplier-ordering-system integration |
+| Quality-concern flagging (suspected-counterfeit item, defective-goods item, stall/market-permit concern), ALWAYS human-gated (`:flag-quality-concern`) | Directly finalizing any quality-dispute resolution or counterfeit-authenticity determination -- permanently out of scope, not a gap |
+| Immutable audit ledger for every log/schedule/order/flag decision | Daily reconciliation/cash-up -- a follow-up slice, not in this R0 |
+
+Extending coverage is additive: add the next op (e.g. a
+stall-relocation-intake or a shrinkage-observation check) as its own
+governed op with its own HARD checks and tests, following the SAME "an
+independent governor re-verifies against the actor's own records before
+any real-world act" pattern this repo's flagship checks already
+establish.
+
+## Maturity
+
+`:implemented` -- `StallMarketAdvisor` + `StallMarketGovernor` run as
+real, tested code (see `Development` above), following the SAME
+governed-actor architecture as every prior actor across this fleet, with
+its own distinct, independently-named governor and its own
+supply-chain vendor-verification check plus a dedicated counterfeit-
+authenticity-determination scope-exclusion.
+
+## License
+
+Code and implementation templates are AGPL-3.0-or-later.
