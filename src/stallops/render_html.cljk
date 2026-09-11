@@ -6,7 +6,7 @@
   generator at all. This namespace drives the REAL actor stack
   (`stallops.operation` -> `stallops.governor` -> `stallops.store`)
   through a scenario adapted from this repo's own `stallops.sim` demo
-  driver (`clojure -M:dev:run`, confirmed BEFORE writing this file to
+  driver (`kbb -M:dev:run`, confirmed BEFORE writing this file to
   produce a sensible ledger against the real seeded stall ids
   `stall-1`..`stall-3` and vendor ids `vendor-1`..`vendor-2` -- ids that
   DO match `stallops.store/demo-data`, so it was safe to reuse rather
@@ -18,7 +18,7 @@
   no timestamps in the page content, byte-identical across reruns
   against the same seed (verify by diffing two consecutive runs).
 
-  Usage: `clojure -M:dev:render-html [out-file]`
+  Usage: `kbb -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
             [kotoba.lang.text :as str]
@@ -189,7 +189,7 @@
      "<main>\n"
      "  <section class=\"card\">\n"
      "    <h2>Market stalls</h2>\n"
-     "    <p class=\"muted\">Demo snapshot — build-time-generated from <code>stallops.store</code> via <code>stallops.render-html</code> (<code>clojure -M:dev:render-html</code>), regenerated from the real actor stack.</p>\n"
+     "    <p class=\"muted\">Demo snapshot — build-time-generated from <code>stallops.store</code> via <code>stallops.render-html</code> (<code>kbb -M:dev:render-html</code>), regenerated from the real actor stack.</p>\n"
      "    <table>\n"
      "      <thead><tr><th>Stall</th><th>Name</th><th>Registration / verification</th><th>Last op status</th></tr></thead>\n"
      "      <tbody>\n"
