@@ -1,6 +1,6 @@
 (ns stallops.phase-test
   "Unit tests of `stallops.phase` rollout logic."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [stallops.phase :as phase]))
 
 (deftest phase-0-read-only
