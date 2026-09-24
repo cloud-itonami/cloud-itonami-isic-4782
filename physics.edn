@@ -1,0 +1,33 @@
+;; What this vertical's robot physically does, declared for
+;; kotoba.robotics.process (kotoba-lang/robotics). `kbb -M:dev:physics` runs it.
+;;
+;; README "Robotics premise": a robot may perform the physical work of a
+;; market stall selling textiles, clothing and footwear (ISIC 4782) --
+;; shelfing at the stall, restocking. Here: a trolley robot hauling the
+;; stall's stock bags from the car park to the pitch over whatever surface
+;; the market stands on, and an arm hanging bundles of garments on the rail.
+;;
+;; Every number without a cited source is marked `estimate` in its :basis.
+;; Replacing an estimate with a sourced value is this bot's growth work.
+{:physics/schema "itonami.physical-ai.spec.v1"
+ :repo "cloud-itonami/cloud-itonami-isic-4782"
+ :cases
+ [{:id :stock-trolley-to-pitch
+   :kind :transport
+   :procedure "trolley robot hauls 80 kg of garment stock bags 80 m from the car park to the pitch; the ground varies from asphalt to gravel and grass"
+   :params {:mass-kg 30.0 :payload-kg 80.0 :distance-m 80.0 :v-max-mps 1.0 :a-max-mps2 0.4
+            :brake-decel-mps2 1.0 :drive-force-n 70.0 :cog-height-m 0.40 :payload-cog-height-m 0.60
+            :support-half-length-m 0.35 :max-time-s 900.0}
+   :sweep {:param :crr :values [0.01 0.02 0.04 0.05 0.06 0.07]}
+   :quantity :cycle-time-s
+   :limit {:max 120.0 :basis "estimate: one haul should take under ~2 min so setup finishes before trading; rolling-resistance coefficients (asphalt ~0.01-0.02, gravel/grass ~0.04-0.08 for small wheels) are estimates too; a stall is out of tolerance"}
+   :boundary {:lo 0.005 :hi 0.10}}
+  {:id :garment-bundle-to-rail
+   :kind :manipulator
+   :procedure "arm lifts a bundle of garments on hangers from the stock bag onto the stall's hanging rail"
+   :params {:l1-m 0.50 :l2-m 0.45 :m1-kg 4.0 :m2-kg 2.5
+            :from [0.55 0.10] :to [0.30 0.85] :duration-s 2.5 :steps 500}
+   :sweep {:param :payload-kg :values [1.0 2.0 4.0 6.0 8.0]}
+   :quantity :peak-tau1-nm
+   :limit {:max 60.0 :basis "estimate: continuous shoulder torque of a light (~5 kg-payload) collaborative arm that a trolley can carry"}
+   :boundary {:lo 0.2 :hi 30.0}}]}
